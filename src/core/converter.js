@@ -1,5 +1,41 @@
-import { measurementConversions } from '../data/measurements.js';
 import { logger } from '../utils/logger.js';
+
+/**
+ * Measurement Conversions Data
+ * Provides comprehensive conversion factors for ingredients
+ */
+export const measurementConversions = {
+  specificIngredients: {
+    'oil': {
+      'tbsp': 13,  // Light density
+      'cup': 218
+    },
+    'honey': {
+      'tbsp': 21,  // Dense liquid
+      'cup': 340
+    },
+    'rice': {
+      'cup': 180,  // Medium density
+      'tbsp': 12
+    },
+    'flour': {
+      'cup': 120,  // Light, less packed
+      'tbsp': 8
+    },
+    'dried herbs': {
+      'tbsp': 2,   // Very light
+      'cup': 30
+    },
+    'water': {
+      'tbsp': 15,
+      'cup': 240
+    }
+  },
+  general: {
+    'tbsp': 15,  // Generic tablespoon conversion
+    'cup': 240   // Generic cup conversion
+  }
+};
 
 /**
  * Converts ingredient units to grams
@@ -80,49 +116,50 @@ export function convertToGrams(ingredient, quantity, unit) {
   // Normalize the unit
   const normalizedUnit = normalizeUnit(unit);
   
-  // Find the conversion factor
-  let factor = 0;
+  // Normalize the ingredient name
+  const normalizedIngredient = ingredient.toLowerCase();
   
-  // Check if we have a specific conversion for this ingredient
-  const specificConversion = measurementConversions.specificIngredients[ingredient.toLowerCase()];
+  // Absolute value to handle negative quantities
+  const absQuantity = Math.abs(quantity);
   
-  if (specificConversion && specificConversion[normalizedUnit]) {
-    factor = specificConversion[normalizedUnit];
-  } 
-  // Otherwise use the general conversion
-  else if (measurementConversions.general[normalizedUnit]) {
-    factor = measurementConversions.general[normalizedUnit];
+  // Check for specific ingredient conversion
+  const specificIngredients = measurementConversions.specificIngredients;
+  
+  // First, check for a specific ingredient and unit conversion
+  if (specificIngredients[normalizedIngredient] && 
+      specificIngredients[normalizedIngredient][normalizedUnit]) {
+    return specificIngredients[normalizedIngredient][normalizedUnit] * absQuantity;
   }
   
-  // Adjust the factor based on ingredient density
-  factor = adjustForDensity(factor, ingredient, normalizedUnit);
+  // If no specific conversion, check for general unit conversion
+  const generalConversions = measurementConversions.general;
+  if (generalConversions[normalizedUnit]) {
+    return generalConversions[normalizedUnit] * absQuantity;
+  }
   
-  return Math.round(quantity * factor * 10) / 10; // Round to 1 decimal place
+  // Fallback to water density if no conversion found
+  return 15 * absQuantity;
 }
 
 /**
  * Normalize unit names to handle variations
+ * @param {string} unit - Unit to normalize
+ * @returns {string} - Normalized unit
  */
 function normalizeUnit(unit) {
+  if (!unit) return 'cup';  // Default to cup if no unit provided
+  
   const unitMap = {
     'tbsp': ['tablespoon', 'tablespoons', 'table spoon', 'tblsp'],
-    'tsp': ['teaspoon', 'teaspoons', 'tea spoon'],
     'cup': ['cups', 'glass', 'glasses'],
-    'g': ['gram', 'grams', 'gm', 'gms'],
-    'kg': ['kilogram', 'kilograms', 'kilo'],
-    'ml': ['milliliter', 'milliliters', 'millilitre'],
-    'l': ['liter', 'liters', 'litre'],
-    'oz': ['ounce', 'ounces'],
-    'lb': ['pound', 'pounds'],
-    'pinch': ['dash', 'pinches'],
-    'piece': ['pc', 'pcs', 'pieces']
+    'tsp': ['teaspoon', 'teaspoons', 'tea spoon']
   };
   
   // Convert to lowercase
-  const lowercaseUnit = unit.toLowerCase();
+  const lowercaseUnit = unit.toLowerCase().trim();
   
   // Check if it's already a normalized unit
-  if (Object.keys(unitMap).includes(lowercaseUnit)) {
+  if (['tbsp', 'cup', 'tsp'].includes(lowercaseUnit)) {
     return lowercaseUnit;
   }
   
@@ -133,43 +170,14 @@ function normalizeUnit(unit) {
     }
   }
   
-  // Return the original unit if no match
-  return lowercaseUnit;
-}
-
-/**
- * Adjust conversion factor based on ingredient density
- */
-function adjustForDensity(factor, ingredient, unit) {
-  // Only adjust volume measurements (not weight)
-  if (!['cup', 'tbsp', 'tsp'].includes(unit)) {
-    return factor;
-  }
-  
-  const lowercaseIngredient = ingredient.toLowerCase();
-  
-  // Heavier ingredients
-  if (/sugar|jaggery|rice|dal|lentil/.test(lowercaseIngredient)) {
-    return factor * 1.2;
-  }
-  // Lighter ingredients
-  else if (/flour|powder|spice|masala/.test(lowercaseIngredient)) {
-    return factor * 0.8;
-  }
-  // Very light ingredients
-  else if (/leaf|cilantro|coriander|mint/.test(lowercaseIngredient)) {
-    return factor * 0.4;
-  }
-  // Very dense ingredients
-  else if (/oil|ghee|butter|honey/.test(lowercaseIngredient)) {
-    return factor * 1.3;
-  }
-  
-  return factor;
+  // Default to cup if unrecognized
+  return 'cup';
 }
 
 /**
  * Guess appropriate unit for an ingredient when none is provided
+ * @param {string} ingredientName - Name of the ingredient
+ * @returns {string} - Guessed unit
  */
 function guessAppropriateUnit(ingredientName) {
   const name = ingredientName.toLowerCase();
@@ -190,6 +198,10 @@ function guessAppropriateUnit(ingredientName) {
 
 /**
  * Assume a default weight when conversion fails
+ * @param {string} ingredientName - Name of the ingredient
+ * @param {number} quantity - Quantity of the ingredient
+ * @param {string} unit - Unit of measurement
+ * @returns {number} - Estimated weight in grams
  */
 function assumeDefaultWeight(ingredientName, quantity, unit) {
   // Default values for common ingredients (in grams per unit)
@@ -247,10 +259,13 @@ function assumeDefaultWeight(ingredientName, quantity, unit) {
 
 /**
  * Get weight based on density for katori and other specific measurements
+ * @param {string} ingredientName - Name of the ingredient
+ * @param {number} quantity - Quantity of the ingredient
+ * @param {string} unit - Unit of measurement
+ * @returns {number} - Weight in grams
  */
 function getDensityBasedWeight(ingredientName, quantity, unit) {
   // Weight categories from the household measurement reference
-  // These are based on the provided reference table
   const weightCategories = {
     'katori': {
       'Dry Rice Item': 124,
@@ -262,7 +277,7 @@ function getDensityBasedWeight(ingredientName, quantity, unit) {
       'Dals': 150,
       'Wet Breakfast Item': 130,
       'Dry Breakfast Item': 100,
-      'Chutneys': 15,  // tbsp
+      'Chutneys': 15,  
       'Raita': 150,
       'default': 150
     }
